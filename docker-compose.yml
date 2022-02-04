@@ -1,0 +1,23 @@
+version: "3"
+
+services:
+  shibboleth-sp:
+    build: .
+    command: ["nginx", "-g", "daemon off;"]
+    container_name: shibboleth-sp
+    volumes:
+      - ./data/attribute-map.xml:/opt/shibboleth-sp/etc/shibboleth/attribute-map.xml:ro
+      - ./data/shibboleth2.xml:/opt/shibboleth-sp/etc/shibboleth/shibboleth2.xml:ro
+      - ./data/sp-cert.pem:/opt/shibboleth-sp/etc/shibboleth/sp-cert.pem:ro
+      - ./data/sp-key.pem:/opt/shibboleth-sp/etc/shibboleth/sp-key.pem:ro
+    restart: unless-stopped
+    labels:
+      - traefik.enable=false
+    networks:
+      - web
+    ports:
+      - 1337:80
+
+networks:
+  web:
+    external: true
