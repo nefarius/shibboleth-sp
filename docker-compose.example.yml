@@ -3,20 +3,25 @@ version: "3"
 services:
   shibboleth-sp:
     build: .
-    command: ["nginx", "-g", "daemon off;"]
     container_name: shibboleth-sp
     volumes:
       - ./data/attribute-map.xml:/opt/shibboleth-sp/etc/shibboleth/attribute-map.xml:ro
       - ./data/shibboleth2.xml:/opt/shibboleth-sp/etc/shibboleth/shibboleth2.xml:ro
       - ./data/sp-cert.pem:/opt/shibboleth-sp/etc/shibboleth/sp-cert.pem:ro
       - ./data/sp-key.pem:/opt/shibboleth-sp/etc/shibboleth/sp-key.pem:ro
+      - ./nginx-default.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     labels:
-      - traefik.enable=false
+      - traefik.enable=true
+      - traefik.http.routers.shibboleth.rule=PathPrefix(`/shibauthorizer`, `/Shibboleth.sso`, `/shibboleth-sp`, `/secure`)
+      - traefik.http.routers.shibboleth.entrypoints=web-secure
+      - traefik.http.routers.shibboleth.tls=true
+      - traefik.http.routers.shibboleth.tls.certresolver=le
+      - traefik.http.services.shibboleth.loadbalancer.server.port=80
     networks:
       - web
-    ports:
-      - 1337:80
+#    ports:
+#      - 1337:80
 
 networks:
   web:

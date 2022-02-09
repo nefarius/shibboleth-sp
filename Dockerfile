@@ -2,7 +2,7 @@
 FROM alpine:3 AS builder
 
 ENV LOG4SHIB_VERSION=2.0.1
-ENV $SHIBBOLETH_SP_VERSION=3.3.0
+ENV SHIBBOLETH_SP_VERSION=3.3.0
 ENV XERCES_C_VERSION=3.2.3
 ENV XML_SECURITY_C=2.0.4
 ENV CPP_OPENSAML_VERSION=3.2.1
@@ -30,7 +30,7 @@ RUN wget https://shibboleth.net/downloads/log4shib/$LOG4SHIB_VERSION/log4shib-$L
     cd /tmp/shibboleth-sp-$SHIBBOLETH_SP_VERSION && \
     ./configure --prefix=/opt/shibboleth-sp --with-fastcgi && make install
 
-ENV NGINX_VERSION nginx-1.17.4
+ENV NGINX_VERSION nginx-1.20.0
 
 RUN apk --update add pcre-dev build-base && \
     mkdir -p /tmp/src && \
@@ -43,6 +43,7 @@ RUN apk --update add pcre-dev build-base && \
     tar -zxvf ${NGINX_VERSION}.tar.gz && \
     cd /tmp/src/${NGINX_VERSION} && \
     ./configure \
+        --with-debug \
         --with-http_ssl_module \
         --with-http_gzip_static_module \
         --add-module=/tmp/src/headers-more-nginx-module-master \
@@ -57,22 +58,30 @@ RUN apk --update add pcre-dev build-base && \
 # Production stage
 FROM alpine:3
 
-ENV PYTHON_VERSION=2.7.12-r0
-ENV PY_PIP_VERSION=8.1.2-r0
-ENV SUPERVISOR_VERSION=3.3.1
+# Install latest Python3, PIP, Supervisord and libraries
+RUN apk update && apk add --no-cache zlib py3-pip zlib openssl libcurl xmlsec fcgi-dev icu pcre && \
+    pip install supervisor
 
-RUN apk update && apk add -u python=$PYTHON_VERSION py-pip=$PY_PIP_VERSION
-RUN pip install supervisor==$SUPERVISOR_VERSION
+COPY entrypoint.sh /entrypoint.sh
 
-# Allow Nginx to access Shibboleth sockets
-#RUN adduser nginx _shibd
+# Add users to drop privileges
+RUN addgroup -S _shibd && adduser -S -H _shibd -G _shibd && \
+    adduser -S -H nginx -G _shibd && \
+    chmod +x /entrypoint.sh && \
+    mkdir -p /var/log/nginx/
+
+# Copy build outputs
+COPY --from=builder /opt/shibboleth-sp/ /opt/shibboleth-sp/
+COPY --from=builder /etc/nginx/conf/ /etc/nginx/
+COPY --from=builder /usr/local/sbin/nginx /usr/local/sbin/nginx
 
 # Copy config files
-COPY nginx-default.conf /etc/nginx/conf.d/default.conf
-COPY supervisord.conf /etc/supervisor/
+COPY supervisord.conf /etc/supervisord.conf
 COPY nginx/ /etc/nginx/
+COPY nginx-default.example.conf /etc/nginx/conf.d/default.conf
 COPY shibd.logger /opt/shibboleth-sp/etc/shibboleth/
 
 EXPOSE 80
 
-ENTRYPOINT ["supervisord", "--nodaemon", "--configuration", "/etc/supervisord.conf"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["supervisord", "--nodaemon", "--configuration", "/etc/supervisord.conf"]
